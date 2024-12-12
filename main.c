@@ -11,6 +11,7 @@
 void gotoXY (COORD* coord,  SHORT x, SHORT y);
 
 //todo snake use a linked list push front pop back
+//todo fix
 typedef struct Position {
     SHORT x;
     SHORT y;
@@ -23,7 +24,7 @@ typedef struct Snake {
     Position tile;
 
     void (*init)(struct Snake*, SHORT, SHORT, char);
-    void (*move)(struct Snake*, COORD* coord);
+    void (*move)(struct Snake*, COORD* coord, char** map, Position nextPosition);
     void (*tryChangeDir)(struct Snake*, char);
 } Snake;
 
@@ -57,49 +58,67 @@ void free2DMemory(char** p, int n) {
     free(p);
 }
 
-void move(struct Snake* s, COORD* coord) {
+bool checkGameOver(Position nextPosition, char** map) {
+    return (map[nextPosition.y][nextPosition.x] == '#' ||
+            map[nextPosition.y][nextPosition.x] == '*'    ) ? true : false;
+}
+
+Position tryMove(struct Snake* s) {
+    Position nextPosition = s->fragments[0];
+    switch (s->direction) {
+        case 's':
+            nextPosition.y += 1;
+            break;
+        case 'a':
+            nextPosition.x -= 1;
+            break;
+        case 'd':
+            nextPosition.x += 1;
+            break;
+        default:
+            nextPosition.y -= 1;
+            break;
+    }
+     return nextPosition;
+}
+
+void move(struct Snake* s, COORD* coord, char** map, Position nextPosition) {
+
     s->tile = s->fragments[s->size - 1];
     gotoXY(coord, s->tile.x, s->tile.y);
+    map[s->tile.y][s->tile.x] = ' ';
     printf(" ");
     gotoXY(coord, s->fragments[0].x, s->fragments[0].y);
+    map[s->fragments[0].y][s->fragments[0].x] = '*';
     printf("*");
 
     for (int i = s->size - 1; i > 0; --i) {
         s->fragments[i] = s->fragments[i - 1];
     }
 
-    switch (s->direction) {
-        case 's':
-            s->fragments[0].y += 1;
-            break;
-        case 'a':
-            s->fragments[0].x -= 1;
-            break;
-        case 'd':
-            s->fragments[0].x += 1;
-            break;
-        default:
-            s->fragments[0].y -= 1;
-            break;
-    }
+    s->fragments[0] = nextPosition;
+
     gotoXY(coord, s->fragments[0].x, s->fragments[0].y);
+    map[s->fragments[0].y][s->fragments[0].x] = '0';
     printf("0");
 }
 
 void tryChangeDir(struct Snake* s, char dir) {
-    switch (s->direction) {
-        case 'w':
-            if (dir != 's') { s->direction = dir; }
-            break;
-        case 's':
-            if (dir != 'w') { s->direction = dir; }
-            break;
-        case 'a':
-            if (dir != 'd') { s->direction = dir; }
-            break;
-        case 'd':
-            if (dir != 'a') { s->direction = dir; }
-            break;
+    if (dir == 'w' || dir == 's' || dir == 'a' || dir == 'd') {
+        switch (s->direction) {
+            case 'w':
+                if (dir != 's') { s->direction = dir; }
+                break;
+            case 's':
+                if (dir != 'w') { s->direction = dir; }
+                break;
+            case 'a':
+                if (dir != 'd') { s->direction = dir; }
+                break;
+            case 'd':
+                if (dir != 'a') { s->direction = dir; }
+                break;
+        }
     }
 }
 
@@ -112,15 +131,7 @@ Snake * createSnake(SHORT mapHeight, SHORT mapWidth) {
     return s;
 }
 
-char** init2DCharTab(SHORT height, SHORT width) {
-    char** map = (char**)calloc(height, sizeof(char*));
-    for (int i = 0; i < height; i++) {
-        map[i] = (char*)calloc((width), sizeof(char));
-    }
-    return map;
-}
-
-char** createMap(SHORT mapHeight, SHORT mapWidth) {
+char** createMap(Snake* snake, SHORT mapHeight, SHORT mapWidth) {
     char** map = (char**)calloc(mapHeight, sizeof(char*));
 
     for (int i = 0; i < mapHeight; i++) {
@@ -138,21 +149,12 @@ char** createMap(SHORT mapHeight, SHORT mapWidth) {
         map[i] = line;
     }
 
-    return map;
-}
-
-void render(char** canvasMap,Snake* snake, char** baseMap, SHORT mapHeight, SHORT mapWidth) {
-
-    for (int i = 0; i < mapHeight; i++) {
-        for (int j = 0; j <= mapWidth; j++) {
-            canvasMap[i][j] = baseMap[i][j];
-        }
-    }
-
-    canvasMap[snake->fragments[0].y][snake->fragments[0].x] = '0';
+    map[snake->fragments[0].y][snake->fragments[0].x] = '0';
     for (int i = 1; i < snake->size; ++i) {
-        canvasMap[snake->fragments[i].y][snake->fragments[i].x] = '*';
+        map[snake->fragments[i].y][snake->fragments[i].x] = '*';
     }
+
+    return map;
 }
 
 void draw(char** map, SHORT mapHeight, SHORT mapWidth) {
@@ -167,22 +169,11 @@ void draw(char** map, SHORT mapHeight, SHORT mapWidth) {
     free(mapString);
 }
 
-bool checkGameOver(Snake* snake, char** map) {
-    return (map[snake->fragments[0].y][snake->fragments[0].x] == '#' ||
-            map[snake->fragments[0].y][snake->fragments[0].x] == '*'    ) ? true : false;
+bool checkFruitCollision(Position nextPosition, char** map) {
+    return (map[nextPosition.y][nextPosition.x] == '$') ? true : false;
 }
 
-bool checkFruitCollision(Snake* snake, COORD* coord, char** map) {
-    bool result = false;
-    if (map[snake->fragments[0].y][snake->fragments[0].x] == '$') {
-        result = true;
-        map[snake->fragments[0].y][snake->fragments[0].x] = ' ';
-    }
-    return result;
-}
-
-void fruitAppearance(char** currMap, Snake* snake,COORD* coord, char** baseMap, SHORT mapHeight, SHORT mapWidth){
-    render(currMap, snake, baseMap, mapHeight, mapWidth);
+void fruitAppearance(COORD* coord, char** baseMap, SHORT mapHeight, SHORT mapWidth){
 
     Position possible[(mapHeight - 2) * (mapWidth - 2) - 2]; // -2 walls and -2 for base snake size
     int sizeOfPossible = 0;
@@ -190,7 +181,7 @@ void fruitAppearance(char** currMap, Snake* snake,COORD* coord, char** baseMap, 
 
     for (int i = 1; i < mapHeight - 1; i++) {
         for (int j = 1; j < mapWidth - 1; j++) {
-            if (currMap[i][j] == ' '){
+            if (baseMap[i][j] == ' '){
                 ++sizeOfPossible;
                 possible[((i - 1) * (mapWidth - 2)) + (j - 1) - skippedCounter] = (Position){j, i};
             } else {
@@ -209,8 +200,6 @@ void fruitEaten(Snake* snake) {
     snake->fragments[(snake->size)++] = snake->tile;
 }
 
-
-
 void hide_cursor() {
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     CONSOLE_CURSOR_INFO cursorInfo;
@@ -224,7 +213,6 @@ void clearInputBuffer() {
         _getch();
     }
 }
-
 
 void gotoXY (COORD* coord,  SHORT x, SHORT y) {
     coord->X = x; coord->Y = y; // X and Y are the coordinates
@@ -255,31 +243,32 @@ int main() {
     hide_cursor();
     COORD coord = {0, 0};
 
-
-    char** currMap = init2DCharTab(mapHeight, mapWidth + 1);
-
     while (gameRunning) {
         int winCounter = winCounterConst;
-        char** baseMap = createMap(mapHeight, mapWidth);
         Snake * snake = createSnake(mapHeight, mapWidth);
+        char** baseMap = createMap(snake, mapHeight, mapWidth);
         snake->init(snake, snakeStartX, snakeStartY, snakeStartDirection);
+        Position nextPosition = {0, 0};
 
-        fruitAppearance(currMap, snake, &coord, baseMap, mapHeight, mapWidth);
 
-        render(currMap, snake, baseMap, mapHeight, mapWidth);
-        draw(currMap, mapHeight, mapWidth);
+        fruitAppearance(&coord, baseMap, mapHeight, mapWidth);
+
+        draw(baseMap, mapHeight, mapWidth);
 
         while (playing) {
-            render(currMap, snake, baseMap, mapHeight, mapWidth);
 
             if (_kbhit()) { snake->tryChangeDir(snake, _getch()); }
-            snake->move(snake, &coord);
+            nextPosition = tryMove(snake);
 
-            if(checkGameOver(snake, currMap)) { playing = false; }
-            if(checkFruitCollision(snake, &coord, baseMap)) {
+            if(checkGameOver(nextPosition, baseMap)){ playing = false; }
+
+            if(checkFruitCollision(nextPosition, baseMap)) {
                 fruitEaten(snake);
-                fruitAppearance(currMap, snake, &coord, baseMap, mapHeight, mapWidth);
+                snake->move(snake, &coord, baseMap, nextPosition);
+                fruitAppearance(&coord, baseMap, mapHeight, mapWidth);
                 if(--winCounter == 0) { win = true; }
+            } else {
+                snake->move(snake, &coord, baseMap, nextPosition);
             }
 
             Sleep(200);
@@ -309,7 +298,6 @@ int main() {
         free(snake);
         free2DMemory(baseMap, mapHeight);
     }
-    free2DMemory(currMap, mapHeight);
 
     return 0;
 }
