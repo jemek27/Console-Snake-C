@@ -10,8 +10,6 @@
 
 void gotoXY (COORD* coord,  SHORT x, SHORT y);
 
-//todo snake use a linked list push front pop back
-//todo fix
 typedef struct Position {
     SHORT x;
     SHORT y;
